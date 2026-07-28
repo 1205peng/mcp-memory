@@ -15,6 +15,8 @@ def init_db():
         """)
 
 init_db()
+import sqlite3
+print("sqlite3 ok")
 
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code, data):
