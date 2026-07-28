@@ -58,4 +58,4 @@ class Handler(BaseHTTPRequestHandler):
                 conn.execute("DELETE FROM memories WHERE key=?", (key,))
             self._send(200, {"status": "deleted"})
 
-HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
+HTTPServer(("0.0.0.0", 80), Handler).serve_forever()
