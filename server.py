@@ -58,6 +58,4 @@ class Handler(BaseHTTPRequestHandler):
                 conn.execute("DELETE FROM memories WHERE key=?", (key,))
             self._send(200, {"status": "deleted"})
 
-port = int(os.environ.get("PORT", 8080))
-print(f"MCP Memory Server running on port {port}")
-HTTPServer(("0.0.0.0", port), Handler).serve_forever()
+HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
