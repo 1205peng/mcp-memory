@@ -1,24 +1,21 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
-db_path = "memory.db"
+import os, json
 
-db_path = os.environ.get("MEMORY_DB", "/data/memory.db")
+db_path = os.environ.get("MEMORY_DB", "memory.json")
 
-def init_db():
-    with sqlite3.connect(db_path) as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS memories (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                key TEXT UNIQUE NOT NULL,
-                content TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-
-init_db()
-import sqlite3
-print("sqlite3 ok")
+if not os.path.exists(db_path):
+    with open(db_path, "w") as f:
+        json.dump({}, f)
 
 class Handler(BaseHTTPRequestHandler):
+    def _read_db(self):
+        with open(db_path) as f:
+            return json.load(f)
+
+    def _write_db(self, data):
+        with open(db_path, "w") as f:
+            json.dump(data, f)
+
     def _send(self, code, data):
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
@@ -29,35 +26,33 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/memory":
             length = int(self.headers["Content-Length"])
             body = json.loads(self.rfile.read(length))
-            try:
-                with sqlite3.connect(db_path) as conn:
-                    conn.execute("INSERT INTO memories (key,content) VALUES (?,?)", (body["key"], body["content"]))
-                self._send(200, {"status": "stored"})
-            except sqlite3.IntegrityError:
-                self._send(200, {"status": "key_exists"})
+            db = self._read_db()
+            db[body["key"]] = body["content"]
+            self._write_db(db)
+            self._send(200, {"status": "stored"})
 
     def do_GET(self):
         if self.path == "/":
             self._send(200, {"service": "MCP Memory Server", "status": "running"})
         elif self.path.startswith("/memory/"):
             key = self.path.split("/memory/")[1]
-            with sqlite3.connect(db_path) as conn:
-                row = conn.execute("SELECT content FROM memories WHERE key=?", (key,)).fetchone()
-            if row:
-                self._send(200, {"key": key, "content": row[0]})
+            db = self._read_db()
+            if key in db:
+                self._send(200, {"key": key, "content": db[key]})
             else:
                 self._send(404, {"status": "not_found"})
-        elif self.path.startswith("/search?q="):
-            q = self.path.split("q=")[1]
-            with sqlite3.connect(db_path) as conn:
-                rows = conn.execute("SELECT key,content FROM memories WHERE key LIKE ? OR content LIKE ?", (f"%{q}%",f"%{q}%")).fetchall()
-            self._send(200, [{"key":r[0],"content":r[1]} for r in rows])
+        elif "/search" in self.path:
+            q = self.path.split("q=")[1] if "q=" in self.path else ""
+            db = self._read_db()
+            results = [{"key":k,"content":v} for k,v in db.items() if q in k or q in v]
+            self._send(200, results)
 
     def do_DELETE(self):
         if self.path.startswith("/memory/"):
             key = self.path.split("/memory/")[1]
-            with sqlite3.connect(db_path) as conn:
-                conn.execute("DELETE FROM memories WHERE key=?", (key,))
+            db = self._read_db()
+            db.pop(key, None)
+            self._write_db(db)
             self._send(200, {"status": "deleted"})
 
 HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
