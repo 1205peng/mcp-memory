@@ -1,5 +1,5 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import sqlite3, os, json
+db_path = "memory.db"
 
 db_path = os.environ.get("MEMORY_DB", "/data/memory.db")
 
