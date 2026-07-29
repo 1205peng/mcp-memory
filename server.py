@@ -1,73 +1,12 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
-import os, json
+import json, os, uuid
 
 db_path = os.environ.get("MEMORY_DB", "memory.json")
 
 if not os.path.exists(db_path):
     with open(db_path, "w") as f:
         json.dump({}, f)
-import uuid
-def _read_db():
-    with open(db_path) as f:
-        return json.load(f)
 
-def _write_db(data):
-    with open(db_path, "w") as f:
-        json.dump(data, f)
-        import uuid
-
-class MCPHandler(BaseHTTPRequestHandler):
-    def do_POST(self):
-        length = int(self.headers["Content-Length"])
-        body = json.loads(self.rfile.read(length))
-        rid = body.get("id", str(uuid.uuid4()))
-        method = body.get("method", "")
-        if method == "tools/list":
-            result = {
-                "tools": [
-                    {"name":"store_memory","description":"存一条记忆","inputSchema": {"type":"object","properties":{"key":{"type":"string"},"content":{"type":"string"}},"required":["key","content"]}},
-                    {"name":"retrieve_memory","description":"查一条记忆","inputSchema": {"type":"object","properties":{"key":{"type":"string"}},"required":["key"]}},
-                    {"name":"delete_memory","description":"删一条记忆","inputSchema": {"type":"object","properties":{"key":{"type":"string"}},"required":["key"]}}
-                ]
-            }
-            self._reply(rid, result)
-        elif method == "tools/call":
-            name = body["params"]["name"]
-            args = body["params"]["arguments"]
-            db = _read_db()
-            if name == "store_memory":
-                db[args["key"]] = args["content"]
-                _write_db(db)
-                self._reply(rid, {"content":[{"type":"text","text":"stored"}]})
-            elif name == "retrieve_memory":
-                content = db.get(args["key"], "not_found")
-                self._reply(rid, {"content":[{"type":"text","text":content}]})
-            elif name == "delete_memory":
-                db.pop(args["key"], None)
-                _write_db(db)
-                self._reply(rid, {"content":[{"type":"text","text":"deleted"}]})
-
-    def do_GET(self):
-        if self.path == "/sse":
-            self.send_response(200)
-            self.send_header("Content-Type","text/event-stream")
-            self.send_header("Cache-Control","no-cache")
-            self.send_header("Connection","keep-alive")
-            self.end_headers()
-            self.wfile.write("data: {\"endpoint\":\"/message\"}\n\n".encode())
-            self.wfile.flush()
-            import time
-            while True:
-                time.sleep(30)
-                self.wfile.write(": heartbeat\n\n".encode())
-                self.wfile.flush()
-
-    def _reply(self, rid, result):
-        self.send_response(200)
-        self.send_header("Content-Type","application/json")
-        self.end_headers()
-        self.wfile.write(json.dumps({"jsonrpc":"2.0","id":rid,"result":result}).encode())
 class Handler(BaseHTTPRequestHandler):
     def _read_db(self):
         with open(db_path) as f:
@@ -84,6 +23,36 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(data).encode())
 
     def do_POST(self):
+        if self.path == "/mcp":
+            length = int(self.headers["Content-Length"])
+            body = json.loads(self.rfile.read(length))
+            rid = body.get("id", str(uuid.uuid4()))
+            method = body.get("method", "")
+            if method == "tools/list":
+                result = {
+                    "tools": [
+                        {"name":"store_memory","description":"存一条记忆","inputSchema":{"type":"object","properties":{"key":{"type":"string"},"content":{"type":"string"}},"required":["key","content"]}},
+                        {"name":"retrieve_memory","description":"查一条记忆","inputSchema":{"type":"object","properties":{"key":{"type":"string"}},"required":["key"]}},
+                        {"name":"delete_memory","description":"删一条记忆","inputSchema":{"type":"object","properties":{"key":{"type":"string"}},"required":["key"]}}
+                    ]
+                }
+                self._send(200, {"jsonrpc":"2.0","id":rid,"result":result})
+            elif method == "tools/call":
+                name = body["params"]["name"]
+                args = body["params"]["arguments"]
+                db = self._read_db()
+                if name == "store_memory":
+                    db[args["key"]] = args["content"]
+                    self._write_db(db)
+                    self._send(200, {"jsonrpc":"2.0","id":rid,"result":{"content":[{"type":"text","text":"stored"}]}})
+                elif name == "retrieve_memory":
+                    content = db.get(args["key"], "not_found")
+                    self._send(200, {"jsonrpc":"2.0","id":rid,"result":{"content":[{"type":"text","text":content}]}})
+                elif name == "delete_memory":
+                    db.pop(args["key"], None)
+                    self._write_db(db)
+                    self._send(200, {"jsonrpc":"2.0","id":rid,"result":{"content":[{"type":"text","text":"deleted"}]}})
+            return
         if self.path == "/memory":
             length = int(self.headers["Content-Length"])
             body = json.loads(self.rfile.read(length))
@@ -94,14 +63,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/":
-            self._send(200, {"service": "MCP Memory Server", "status": "running"})
+            self._send(200, {"service":"MCP Memory Server","status":"running"})
         elif self.path.startswith("/memory/"):
             key = self.path.split("/memory/")[1]
             db = self._read_db()
             if key in db:
-                self._send(200, {"key": key, "content": db[key]})
+                self._send(200, {"key":key,"content":db[key]})
             else:
-                self._send(404, {"status": "not_found"})
+                self._send(404, {"status":"not_found"})
         elif "/search" in self.path:
             q = self.path.split("q=")[1] if "q=" in self.path else ""
             db = self._read_db()
@@ -114,6 +83,6 @@ class Handler(BaseHTTPRequestHandler):
             db = self._read_db()
             db.pop(key, None)
             self._write_db(db)
-            self._send(200, {"status": "deleted"})
+            self._send(200, {"status":"deleted"})
 
 HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
