@@ -1,3 +1,7 @@
+---
+name: memory
+description: Store and retrieve memories
+---
 # MCP Memory
 
 Store and retrieve memories via HTTP API.
