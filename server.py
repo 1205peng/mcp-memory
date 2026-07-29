@@ -116,16 +116,4 @@ class Handler(BaseHTTPRequestHandler):
             self._write_db(db)
             self._send(200, {"status": "deleted"})
 
-import socketserver, threading
-
-class ThreadedServer(socketserver.ThreadingMixIn, HTTPServer):
-    allow_reuse_address = True
-
-srv1 = ThreadedServer(("0.0.0.0", 8080), Handler)
-srv2 = ThreadedServer(("0.0.0.0", 9000), MCPHandler)
-t1 = threading.Thread(target=lambda: srv1.serve_forever(), daemon=True)
-t2 = threading.Thread(target=lambda: srv2.serve_forever(), daemon=True)
-t1.start()
-t2.start()
-print("Main API on :8080, MCP on :9000")
-t1.join()
+HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
