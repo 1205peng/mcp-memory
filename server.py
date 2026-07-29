@@ -62,8 +62,6 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, {"status": "stored"})
 
     def do_GET(self):
-        if self.path == "/mcp":
-    self._send(200, {"status":"ok"})
         if self.path == "/":
             self._send(200, {"service":"MCP Memory Server","status":"running"})
         elif self.path.startswith("/memory/"):
